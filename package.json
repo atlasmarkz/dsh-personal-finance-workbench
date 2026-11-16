@@ -1,0 +1,39 @@
+{
+  "name": "dsh-personal-finance-workbench",
+  "version": "0.1.0",
+  "description": "个人财务管理工作台：读入 Excel/CSV 个人流水，自动体检、口径映射、收支与储蓄率分析，一次导出可编辑的 xlsx 与一页结论 docx。",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "engine/finance.py",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "dsh-desktop-workbenches"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atlasmarkz/dsh-personal-finance-workbench.git"
+  },
+  "author": "atlasmarkz",
+  "engines": {
+    "node": ">=22"
+  },
+  "license": "MIT"
+}

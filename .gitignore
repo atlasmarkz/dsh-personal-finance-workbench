@@ -1,0 +1,14 @@
+node_modules/
+.tmp-test/
+.tmp-*/
+.dsh-office-*/
+*.tgz
+*.log
+.env
+.env.*
+preview/
+*.xlsx
+*.docx
+!docs/screenshots/*.png
+__pycache__/
+*.pyc

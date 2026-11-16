@@ -1,0 +1,6 @@
+# 个人财务管理工作台：Host 侧注册本机分析接口，数据与导出物保存在独立目录。
+- insert:
+    - id: personal-finance-workbench
+      name: dsh-personal-finance-workbench
+      config:
+        root: !!js dshHomePath('personal-finance-workbench')
