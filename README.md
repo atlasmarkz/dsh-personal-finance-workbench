@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" alt="个人财务管理工作台 logo" width="112" height="112">
+</p>
+
 # 个人财务管理工作台（dsh-personal-finance-workbench）
 
 把一份 Excel / CSV 个人流水，变成一套**看得懂、拿得走**的个人财务分析：数据体检 → 口径确认 → 收支 / 结构 / 异常分析 → 可编辑的 xlsx 与一页结论 docx。
@@ -14,6 +18,12 @@
    - `*.xlsx`：概览、月度收支、支出结构、收入来源、收支明细、数据体检、口径卡、复跑对比，全部使用**原生 Excel 公式**（打开即重算）；
    - `*.docx`：一页结论，含摘要、关键指标、月度收支、支出结构、异常与建议、口径说明。
 6. **复跑对比**：同一份数据再次生成时，自动与上一次结果对比（总收入、总支出、净结余、储蓄率变化）。
+
+## 界面截图
+
+| 首页 · 数据接入 | 财务看板 | 交付文件 |
+| :---: | :---: | :---: |
+| <img src="docs/screenshots/01-home.png" alt="首页：选择流水文件与五步流程" width="320"> | <img src="docs/screenshots/02-analysis.png" alt="财务看板：KPI 卡片与内联 SVG 图表" width="320"> | <img src="docs/screenshots/03-deliverables.png" alt="交付文件：可编辑的 xlsx 与 docx" width="320"> |
 
 ## 数据要求
 
