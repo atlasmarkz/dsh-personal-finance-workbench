@@ -79,6 +79,286 @@ window.__ModuleLoader__.load({
       return p.length > 68 ? '…' + p.slice(-66) : p;
     }
 
+    var CHART_COLORS = ['#2563eb', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#64748b'];
+
+    function compactNumber(value) {
+      if (value == null || !isFinite(value)) return '—';
+      var abs = Math.abs(value);
+      if (abs >= 100000000) return (value / 100000000).toFixed(1) + '亿';
+      if (abs >= 10000) return (value / 10000).toFixed(abs >= 1000000 ? 0 : 1) + '万';
+      if (abs >= 1000) return Math.round(value).toLocaleString('zh-CN');
+      return (Math.round(value * 10) / 10).toString();
+    }
+
+    function niceMax(value) {
+      var v = Math.abs(value || 0);
+      if (!v || !isFinite(v)) return 1;
+      var exp = Math.pow(10, Math.floor(Math.log10(v)));
+      var norm = v / exp;
+      var step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+      return step * exp;
+    }
+
+    function niceStep(value) {
+      var v = Math.abs(value || 0);
+      if (!v || !isFinite(v)) return 1;
+      var exp = Math.pow(10, Math.floor(Math.log10(v)));
+      var norm = v / exp;
+      var step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10;
+      return step * exp;
+    }
+
+    function axisUnit(maxAbs) {
+      if (maxAbs >= 100000000) return 'yi';
+      if (maxAbs >= 10000) return 'wan';
+      return 'num';
+    }
+
+    function formatAxis(value, maxAbs) {
+      if (value === 0) return '0';
+      var abs = Math.abs(value);
+      var unit = axisUnit(maxAbs || abs);
+      if (unit === 'yi') return (value / 100000000).toFixed(1) + '亿';
+      if (unit === 'wan') {
+        var text = (value / 10000).toFixed(1);
+        return (text.slice(-2) === '.0' ? text.slice(0, -2) : text) + '万';
+      }
+      if (abs >= 1000) return String(Math.round(value));
+      return String(Math.round(value * 100) / 100);
+    }
+
+    function axisPct(value) {
+      return (Math.round(value * 1000) / 10) + '%';
+    }
+
+    function ChartPanel(props) {
+      return h('div', { className: 'finPanel' + (props.wide ? ' finPanelWide' : '') },
+        h('div', { className: 'finPanelHead' },
+          h('b', null, props.title),
+          props.hint ? h('span', null, props.hint) : null),
+        props.children);
+    }
+
+    function ChartLegend(props) {
+      return h('div', { className: 'finLegend' }, (props.items || []).map(function (item, index) {
+        return h('span', { key: index }, h('i', { style: { background: item.color } }), item.name);
+      }));
+    }
+
+    function GroupedBars(props) {
+      var rows = props.rows || [];
+      var series = props.series || [];
+      if (!rows.length) return h('div', { className: 'finEmpty' }, '暂无可绘制的数据');
+      var wide = !!props.wide;
+      var W = wide ? 960 : 470;
+      var H = wide ? 264 : 232;
+      var padL = wide ? 52 : 44;
+      var padR = 14;
+      var padT = 14;
+      var padB = wide ? 36 : 52;
+      var plotW = W - padL - padR;
+      var plotH = H - padT - padB;
+      var peak = 0;
+      rows.forEach(function (row) {
+        (row.values || []).forEach(function (value) {
+          if (isFinite(value) && Math.abs(value) > peak) peak = Math.abs(value);
+        });
+      });
+      var top = niceMax(peak || 1);
+      var axisStep = top / 4;
+      var groupW = plotW / rows.length;
+      var inner = groupW * 0.72;
+      var barW = Math.max(2, inner / Math.max(1, series.length));
+      var labelEvery = rows.length > 10 && !wide ? 2 : 1;
+      var parts = [];
+      var t;
+      for (t = 0; t <= 4; t += 1) {
+        var tickValue = axisStep * t;
+        var gy = padT + plotH - (tickValue / top) * plotH;
+        parts.push(h('line', { key: 'g' + t, x1: padL, x2: W - padR, y1: gy, y2: gy, stroke: 'currentColor', strokeOpacity: t === 0 ? 0.28 : 0.12, strokeDasharray: t === 0 ? null : '3 4' }));
+        parts.push(h('text', { key: 'gt' + t, x: padL - 8, y: gy + 4, textAnchor: 'end' }, formatAxis(tickValue, top)));
+      }
+      rows.forEach(function (row, rowIndex) {
+        var baseX = padL + rowIndex * groupW + (groupW - inner) / 2;
+        (row.values || []).forEach(function (value, sIndex) {
+          var sv = isFinite(value) ? value : 0;
+          var barHeight = sv === 0 ? 0 : Math.max(1.5, (Math.abs(sv) / top) * plotH);
+          var by = padT + plotH - barHeight;
+          var fill = props.colorBySign ? (sv >= 0 ? '#10b981' : '#ef4444') : (series[sIndex] ? series[sIndex].color : CHART_COLORS[sIndex % CHART_COLORS.length]);
+          parts.push(h('rect', {
+            key: 'b' + rowIndex + '-' + sIndex,
+            x: baseX + sIndex * barW + 0.8,
+            y: by,
+            width: Math.max(1.6, barW - 1.6),
+            height: barHeight,
+            rx: 2,
+            fill: fill,
+            opacity: 0.92,
+          }, h('title', null, (row.label || '') + ' · ' + (series[sIndex] ? series[sIndex].name + ' ' : '') + (props.format ? props.format(sv) : String(sv)))));
+        });
+        if (rowIndex % labelEvery === 0) {
+          var lx = padL + rowIndex * groupW + groupW / 2;
+          var ly = H - padB + (wide ? 16 : 12);
+          parts.push(h('text', {
+            key: 'l' + rowIndex,
+            x: lx,
+            y: ly,
+            textAnchor: 'end',
+            transform: 'rotate(-32 ' + lx + ' ' + ly + ')',
+          }, String(row.label || '')));
+        }
+      });
+      return h('div', null,
+        h('svg', { className: 'finChart', viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' }, parts),
+        series.length > 1 ? h(ChartLegend, { items: series }) : null);
+    }
+
+    function TrendLines(props) {
+      var rows = props.rows || [];
+      var series = props.series || [];
+      if (!rows.length) return h('div', { className: 'finEmpty' }, '暂无可绘制的数据');
+      var wide = !!props.wide;
+      var W = wide ? 960 : 470;
+      var H = wide ? 264 : 232;
+      var padL = wide ? 54 : 44;
+      var padR = 14;
+      var padT = 16;
+      var padB = wide ? 36 : 52;
+      var plotW = W - padL - padR;
+      var plotH = H - padT - padB;
+      var peak = 0;
+      var low = 0;
+      rows.forEach(function (row) {
+        (row.values || []).forEach(function (value) {
+          if (!isFinite(value)) return;
+          if (value > peak) peak = value;
+          if (value < low) low = value;
+        });
+      });
+      var dataMin = props.zeroBase === false ? low : 0;
+      var dataMax = peak;
+      var axisStep = niceStep((dataMax - dataMin) / 4 || 1);
+      var yMin = Math.floor(dataMin / axisStep) * axisStep;
+      var yMax = Math.ceil(dataMax / axisStep) * axisStep;
+      if (yMax <= yMin) yMax = yMin + axisStep;
+      var span = yMax - yMin;
+      var tickCount = Math.max(2, Math.min(7, Math.round(span / axisStep)));
+      var yFor = function (value) { return padT + plotH - ((value - yMin) / span) * plotH; };
+      var parts = [];
+      var t;
+      for (t = 0; t <= tickCount; t += 1) {
+        var tickValue = yMin + axisStep * t;
+        var gy = yFor(tickValue);
+        parts.push(h('line', { key: 'g' + t, x1: padL, x2: W - padR, y1: gy, y2: gy, stroke: 'currentColor', strokeOpacity: t === 0 ? 0.28 : 0.12, strokeDasharray: t === 0 ? null : '3 4' }));
+        parts.push(h('text', { key: 'gt' + t, x: padL - 8, y: gy + 4, textAnchor: 'end' }, props.pctAxis ? axisPct(tickValue) : formatAxis(tickValue, Math.max(Math.abs(yMin), Math.abs(yMax)))));
+      }
+      var labelEvery = rows.length > 10 && !wide ? 2 : 1;
+      rows.forEach(function (row, rowIndex) {
+        if (rowIndex % labelEvery !== 0) return;
+        var lx = padL + (plotW / (rows.length - 1 || 1)) * rowIndex;
+        var ly = H - padB + (wide ? 16 : 12);
+        parts.push(h('text', {
+          key: 'l' + rowIndex,
+          x: lx,
+          y: ly,
+          textAnchor: 'end',
+          transform: 'rotate(-32 ' + lx + ' ' + ly + ')',
+        }, String(row.label || '')));
+      });
+      series.forEach(function (line, sIndex) {
+        var points = [];
+        rows.forEach(function (row, rowIndex) {
+          var value = (row.values || [])[sIndex];
+          if (!isFinite(value)) return;
+          var x = padL + (plotW / (rows.length - 1 || 1)) * rowIndex;
+          points.push([x, yFor(value)]);
+        });
+        if (points.length > 1 && props.area !== false) {
+          var area = 'M' + points[0][0].toFixed(1) + ',' + (padT + plotH).toFixed(1);
+          points.forEach(function (pt) { area += ' L' + pt[0].toFixed(1) + ',' + pt[1].toFixed(1); });
+          area += ' L' + points[points.length - 1][0].toFixed(1) + ',' + (padT + plotH).toFixed(1) + ' Z';
+          parts.push(h('path', { key: 'area' + sIndex, d: area, fill: line.color, opacity: 0.10 }));
+        }
+        if (points.length > 1) {
+          parts.push(h('polyline', {
+            key: 'line' + sIndex,
+            points: points.map(function (pt) { return pt[0].toFixed(1) + ',' + pt[1].toFixed(1); }).join(' '),
+            fill: 'none',
+            stroke: line.color,
+            strokeWidth: 2.2,
+            strokeLinejoin: 'round',
+            strokeLinecap: 'round',
+          }));
+        }
+        points.forEach(function (pt, pointIndex) {
+          var value = (rows[pointIndex].values || [])[sIndex];
+          parts.push(h('circle', { key: 'd' + sIndex + '-' + pointIndex, cx: pt[0], cy: pt[1], r: 2.6, fill: line.color },
+            h('title', null, (rows[pointIndex].label || '') + ' · ' + line.name + ' ' + (props.format ? props.format(value) : String(value)))));
+        });
+      });
+      return h('div', null,
+        h('svg', { className: 'finChart', viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' }, parts),
+        series.length > 1 ? h(ChartLegend, { items: series }) : null);
+    }
+
+    function DonutChart(props) {
+      var items = (props.items || []).filter(function (item) { return item.value > 0; });
+      var colors = props.colors || CHART_COLORS;
+      if (!items.length) return h('div', { className: 'finEmpty' }, '暂无可绘制的数据');
+      var size = props.size || 170;
+      var thickness = props.thickness || 22;
+      var radius = (size - thickness) / 2;
+      var circumference = 2 * Math.PI * radius;
+      var center = size / 2;
+      var total = 0;
+      items.forEach(function (item) { total += item.value; });
+      if (!total) total = 1;
+      var offset = 0;
+      var arcs = items.map(function (item, index) {
+        var length = (item.value / total) * circumference;
+        var node = h('circle', {
+          key: 'arc' + index,
+          cx: center,
+          cy: center,
+          r: radius,
+          fill: 'none',
+          stroke: colors[index % colors.length],
+          strokeWidth: thickness,
+          strokeDasharray: length.toFixed(2) + ' ' + (circumference - length).toFixed(2),
+          strokeDashoffset: (-offset).toFixed(2),
+          transform: 'rotate(-90 ' + center + ' ' + center + ')',
+        }, h('title', null, item.name + ' · ' + (props.format ? props.format(item.value) : String(item.value)) + ' · ' + ((item.value / total) * 100).toFixed(1) + '%'));
+        offset += length;
+        return node;
+      });
+      return h('div', { className: 'finDonut' },
+        h('svg', { width: size, height: size, viewBox: '0 0 ' + size + ' ' + size, style: { flex: 'none' } },
+          arcs,
+          h('text', { x: center, y: center - 2, textAnchor: 'middle', style: { fontSize: 17, fontWeight: 650, fill: 'var(--fin-text,#111827)' } }, props.centerValue || ''),
+          h('text', { x: center, y: center + 16, textAnchor: 'middle' }, props.centerLabel || '')),
+        h('div', { className: 'finLegendCol' }, items.slice(0, props.maxItems || 8).map(function (item, index) {
+          return h('div', { key: item.name, className: 'finLegendRow' },
+            h('i', { style: { background: colors[index % colors.length] } }),
+            h('span', { className: 'finLegendName', title: item.name }, item.name),
+            h('em', null, props.format ? props.format(item.value) : String(item.value)),
+            h('b', null, ((item.value / total) * 100).toFixed(1) + '%'));
+        })));
+    }
+
+    function HBars(props) {
+      var items = props.items || [];
+      if (!items.length) return h('div', { className: 'finEmpty' }, '暂无可绘制的数据');
+      var peak = 1;
+      items.forEach(function (item) { if (Math.abs(item.value || 0) > peak) peak = Math.abs(item.value || 0); });
+      return h('div', null, items.map(function (item, index) {
+        var width = Math.max(1.5, (Math.abs(item.value || 0) / peak) * 100);
+        return h('div', { key: (item.name || index) + '', className: 'finHBarRow' },
+          h('span', { className: 'finHBarName', title: item.name }, item.name),
+          h('div', { className: 'finHBarTrack' }, h('i', { style: { width: width + '%', background: item.color || props.color || '#2563eb' } })),
+          h('b', null, props.format ? props.format(item.value) : String(item.value)));
+      }));
+    }
+
     var CSS = [
       '.finRoot{box-sizing:border-box;display:flex;flex-direction:column;width:100%;height:100%;min-height:0;background:var(--fin-page,#f6f7f9);color:var(--fin-text,#111827);font-family:var(--fin-font,-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif);font-size:13px;overflow:hidden}',
       '.finToolbar{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--fin-panel,#ffffff);border-bottom:1px solid var(--fin-border,#e5e7eb);min-height:60px}',
@@ -162,6 +442,30 @@ window.__ModuleLoader__.load({
       '.finChatDrawer{width:min(420px,42%);flex:none;border-left:1px solid var(--fin-border,#e5e7eb);min-height:0;display:flex;flex-direction:column;background:var(--fin-panel,#fff)}',
       '.finChatHead{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--fin-border,#e5e7eb);font-size:12.5px;font-weight:600}',
       '.finChatBody{flex:1;min-height:0;display:flex;flex-direction:column}',
+      '.finDash{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px}',
+      '.finPanel{border:1px solid var(--fin-border,#e5e7eb);border-radius:10px;padding:12px 14px 10px;background:var(--fin-panel,#fff);min-width:0}',
+      '.finPanelWide{grid-column:1/-1}',
+      '.finPanelHead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:6px}',
+      '.finPanelHead b{font-size:12.8px;font-weight:650}',
+      '.finPanelHead span{font-size:11.5px;color:var(--fin-muted,#6b7280)}',
+      '.finChart{display:block;width:100%;height:auto}',
+      '.finChart text{fill:var(--fin-muted,#6b7280);font-family:inherit;font-size:11px}',
+      '.finLegend{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:8px}',
+      '.finLegend>span{font-size:11.5px;color:var(--fin-muted,#6b7280);display:inline-flex;align-items:center;gap:5px}',
+      '.finLegend i,.finLegendRow i{width:9px;height:9px;border-radius:2px;display:inline-block;flex:none}',
+      '.finDonut{display:flex;align-items:center;gap:16px;flex-wrap:wrap}',
+      '.finLegendCol{display:flex;flex-direction:column;gap:6px;min-width:0;flex:1}',
+      '.finLegendRow{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;gap:8px;align-items:center;font-size:11.8px}',
+      '.finLegendName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.finLegendRow em{font-style:normal;color:var(--fin-muted,#6b7280);font-variant-numeric:tabular-nums}',
+      '.finLegendRow b{font-weight:600;font-variant-numeric:tabular-nums;min-width:44px;text-align:right}',
+      '.finHBarRow{display:grid;grid-template-columns:minmax(60px,110px) minmax(0,1fr) auto;gap:10px;align-items:center;margin:8px 0;font-size:12px}',
+      '.finHBarName{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.finHBarTrack{background:var(--fin-track,#f1f3f7);border-radius:5px;height:14px;overflow:hidden}',
+      '.finHBarTrack i{display:block;height:100%;border-radius:5px}',
+      '.finHBarRow b{font-weight:600;font-variant-numeric:tabular-nums;min-width:78px;text-align:right}',
+      '.finPanel .finEmpty{padding:18px 12px}',
+      '@media (max-width:1100px){.finDash{grid-template-columns:minmax(0,1fr)}}',
       '@media (prefers-color-scheme: dark){.finRoot{--fin-page:#0f1115;--fin-panel:#171a21;--fin-border:#2a2f3a;--fin-borderSoft:#22262f;--fin-text:#e5e7eb;--fin-muted:#9aa3b2;--fin-hover:#1e232c;--fin-chip:#232833;--fin-active:#1c2536;--fin-activeBorder:#33415c;--fin-th:#1b1f27}}',
     ].join('\n');
 
@@ -460,9 +764,53 @@ window.__ModuleLoader__.load({
         var expenseStructure = (analysis.expenseStructure && analysis.expenseStructure.items) || [];
         var incomeStructure = (analysis.incomeStructure && analysis.incomeStructure.items) || [];
         var anomalies = analysis.anomalies || [];
-        var maxExpense = Math.max.apply(null, trend.map(function (item) { return item.expense || 0; }).concat([1]));
+        var barsPanel = h(ChartPanel, { title: '月度收入与支出', hint: '柱高按金额 · 悬停看具体数值', wide: true },
+          h(GroupedBars, {
+            wide: true,
+            rows: trend.map(function (item) { return { label: item.period || '', values: [item.income || 0, item.expense || 0] }; }),
+            series: [{ name: '收入', color: '#22c55e' }, { name: '支出', color: '#ef4444' }],
+            format: money,
+          }));
+        var ratePanel = h(ChartPanel, { title: '储蓄率走势', hint: '净结余 ÷ 总收入' },
+          h(TrendLines, {
+            zeroBase: false,
+            rows: trend.map(function (item) { return { label: item.period || '', values: [item.savingsRate || 0] }; }),
+            series: [{ name: '储蓄率', color: '#2563eb' }],
+            format: pct,
+            pctAxis: true,
+          }));
+        var netPanel = h(ChartPanel, { title: '月度结余', hint: '正绿负红' },
+          h(GroupedBars, {
+            rows: trend.map(function (item) { return { label: item.period || '', values: [item.net || 0] }; }),
+            series: [{ name: '净结余', color: '#10b981' }],
+            colorBySign: true,
+            format: money,
+          }));
+        var expensePanel = h(ChartPanel, { title: '支出结构', hint: expenseStructure.length ? 'Top' + Math.min(8, expenseStructure.length) + ' 分类' : '' },
+          h(DonutChart, {
+            items: expenseStructure.map(function (item) { return { name: item.name, value: item.amount || 0 }; }),
+            format: money,
+            centerValue: expenseStructure.length ? pct(expenseStructure[0].share) : '',
+            centerLabel: expenseStructure.length ? expenseStructure[0].name : '',
+            maxItems: 8,
+          }));
+        var incomePanel = h(ChartPanel, { title: '收入来源', hint: incomeStructure.length ? 'Top' + Math.min(6, incomeStructure.length) + ' 来源' : '' },
+          h(DonutChart, {
+            items: incomeStructure.map(function (item) { return { name: item.name, value: item.amount || 0 }; }),
+            format: money,
+            centerValue: incomeStructure.length ? pct(incomeStructure[0].share) : '',
+            centerLabel: incomeStructure.length ? incomeStructure[0].name : '',
+            maxItems: 6,
+          }));
+        var anomalyPanel = h(ChartPanel, { title: '异常与提示', hint: anomalies.length + ' 条信号', wide: true },
+          anomalies.length ? h('div', null, anomalies.map(function (item, index) {
+            var cls = item.level === 'error' ? 'finChipErr' : item.level === 'warn' ? 'finChipWarn' : 'finChip';
+            return h('div', { className: 'finIssue', key: index },
+              h('span', { className: 'finChip ' + cls }, item.level === 'error' ? '异常' : item.level === 'warn' ? '注意' : '提示'),
+              h('p', null, h('b', null, item.title || ''), h('br'), h('small', null, item.detail || '')));
+          })) : h('div', { className: 'finEmpty' }, '没有发现明显异常，收支整体平稳。'));
         analysisSection = h(Section, {
-          title: '分析结果',
+          title: '财务看板',
           hint: (kpis.periodStart ? kpis.periodStart + ' 至 ' + kpis.periodEnd + ' · ' : '') + kpis.records + ' 条有效记录',
           extra: busy === 'report'
             ? h('span', { className: 'finLoading' }, h('i', { className: 'finSpin' }), '正在生成交付物…')
@@ -475,12 +823,9 @@ window.__ModuleLoader__.load({
             h('div', { className: 'finCard' }, h('span', null, '储蓄率'), h('b', null, pct(kpis.savingsRate)), h('em', null, '净结余 ÷ 总收入')),
             h('div', { className: 'finCard' }, h('span', null, '月均支出'), h('b', null, money(kpis.avgMonthlyExpense)), h('em', null, kpis.months + ' 个月')),
             h('div', { className: 'finCard' }, h('span', null, '结余趋势'), h('b', { className: kpis.trendDirection >= 0 ? 'finUp' : 'finDown' }, pctDelta(kpis.trendDirection)), h('em', null, '储蓄率首末对比'))),
-          trend.length ? h('div', { className: 'finSpark' }, trend.map(function (item, index) {
-            var height = Math.max(6, Math.round(((item.expense || 0) / maxExpense) * 70));
-            return h('i', { key: item.period || index, style: { height: height + 'px' }, title: (item.period || '') + ' · 支出 ' + money(item.expense) });
-          })) : null,
+          h('div', { className: 'finDash' }, barsPanel, ratePanel, netPanel, expensePanel, incomePanel, anomalyPanel),
           trend.length ? h('div', { style: { marginTop: 4 } },
-            h('div', { className: 'finSectionHead', style: { marginBottom: 8 } }, h('b', null, '月度收支'), h('span', null, '收入、支出、结余、储蓄率与环比')),
+            h('div', { className: 'finSectionHead', style: { marginBottom: 8 } }, h('b', null, '明细数据'), h('span', null, '月度收支（xlsx 中保留完整流水）')),
             h('div', { className: 'finTableWrap' },
               h('table', { className: 'finTable' },
                 h('thead', null, h('tr', null, h('th', null, '期间'), h('th', null, '收入'), h('th', null, '支出'), h('th', null, '结余'), h('th', null, '储蓄率'), h('th', null, '支出环比'))),
@@ -494,7 +839,7 @@ window.__ModuleLoader__.load({
                     h('td', { className: item.expenseMom == null ? '' : item.expenseMom >= 0 ? 'finDown' : 'finUp' }, item.expenseMom == null ? '—' : pctDelta(item.expenseMom)));
                 }))))) : null,
           expenseStructure.length ? h('div', { style: { marginTop: 14 } },
-            h('div', { className: 'finSectionHead', style: { marginBottom: 8 } }, h('b', null, '支出结构'), h('span', null, 'Top8 分类与占比')),
+            h('div', { className: 'finSectionHead', style: { marginBottom: 8 } }, h('b', null, '结构明细'), h('span', null, 'Top8 支出分类与笔数')),
             h('div', { className: 'finTableWrap' },
               h('table', { className: 'finTable' },
                 h('thead', null, h('tr', null, h('th', null, '分类'), h('th', null, '支出金额'), h('th', null, '支出占比'), h('th', null, '笔数'))),
@@ -504,27 +849,7 @@ window.__ModuleLoader__.load({
                     h('td', null, money(item.amount)),
                     h('td', null, pct(item.share)),
                     h('td', null, String(item.count || 0)));
-                }))))) : null,
-          incomeStructure.length ? h('div', { style: { marginTop: 14 } },
-            h('div', { className: 'finSectionHead', style: { marginBottom: 8 } }, h('b', null, '收入来源'), h('span', null, 'Top8 来源与占比')),
-            h('div', { className: 'finTableWrap' },
-              h('table', { className: 'finTable' },
-                h('thead', null, h('tr', null, h('th', null, '来源'), h('th', null, '收入金额'), h('th', null, '收入占比'), h('th', null, '笔数'))),
-                h('tbody', null, incomeStructure.slice(0, 8).map(function (item) {
-                  return h('tr', { key: item.name },
-                    h('td', null, item.name),
-                    h('td', null, money(item.amount)),
-                    h('td', null, pct(item.share)),
-                    h('td', null, String(item.count || 0)));
-                }))))) : null,
-          anomalies.length ? h('div', { style: { marginTop: 14 } },
-            h('div', { className: 'finSectionHead', style: { marginBottom: 6 } }, h('b', null, '异常与提示'), h('span', null, anomalies.length + ' 条')),
-            anomalies.map(function (item, index) {
-              var cls = item.level === 'error' ? 'finChipErr' : item.level === 'warn' ? 'finChipWarn' : 'finChip';
-              return h('div', { className: 'finIssue', key: index },
-                h('span', { className: 'finChip ' + cls }, item.level === 'error' ? '异常' : item.level === 'warn' ? '注意' : '提示'),
-                h('p', null, h('b', null, item.title || ''), h('br'), h('small', null, item.detail || '')));
-            })) : null);
+                }))))) : null);
       }
 
       var deliverSection = null;
