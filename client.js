@@ -587,6 +587,7 @@ window.__ModuleLoader__.load({
         ctx.effect(function () {
           return ctx.desktopWorkbenches.register({
             title: '个人财务',
+            repository: 'https://github.com/atlasmarkz/dsh-personal-finance-workbench',
             description: '读入 Excel / CSV 个人流水，体检口径、分析收支与储蓄率，导出可编辑 xlsx 与一页结论 docx。',
             customFrame: true,
             headerLayout: 'compact',
