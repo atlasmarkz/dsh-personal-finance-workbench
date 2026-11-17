@@ -179,6 +179,7 @@ export function apply(ctx, applyConfig) {
   ctx.connection.fetch.register({
     path: `${API}/info`,
     methods: ['GET'],
+    requestBody: 'buffered',
     async fetch() {
       const history = await readHistory();
       return jsonResponse({
@@ -336,6 +337,7 @@ export function apply(ctx, applyConfig) {
   ctx.connection.fetch.register({
     path: `${API}/download`,
     methods: ['GET'],
+    requestBody: 'buffered',
     async fetch(request) {
       try {
         const url = new URL(request.url);
